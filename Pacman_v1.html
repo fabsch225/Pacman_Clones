@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.3/p5.js"></script>
+    <script src="http://davidbau.com/encode/seedrandom.js"></script>
+</head>
+<body>
+<script>
+var dev_mode = false;
+var dev_debug = "dev_mode: enabled";
+var dev_fps = false;
+var lastCalledTime, fps;
+
+var lib = 1000;
+
+var gameover = true;
+var message = "Welcome to Pacman"
+var timer = true;
+
+var cols, rows;
+var w = 45;
+var grid = [];
+var current;
+var stack = [];
+var finished = false;
+var coinWidth = 0;
+var cop = 0.2;
+var ghost_a = 3
+
+var player;
+
+var coins = 0;
+var allcoins = 0;
+var fr_timer = 7;
+var schutzzeit = true;
+
+var ghosts = []
+
+function setup() {
+	createCanvas(800,800);
+	frameRate(60);
+	cols = floor(width/w)
+	rows = floor(height/w)
+	//Math.seedrandom('Deine Mutter')
+	new_maze()
+}
+function draw() {
+	if (dev_mode && document.getElementById("dev")) {
+		if(dev_fps) {
+			if(!lastCalledTime) {
+			    lastCalledTime = Date.now();
+			    fps = 0;
+			    var fps_counter = setInterval(function(){dev_debug = fps + " | " + getFrameRate()+ " | " + 60},500)
+			}
+			
+			var delta = (Date.now() - lastCalledTime)/1000;
+			lastCalledTime = Date.now();
+			fps = 1/delta;
+		}
+	 	document.getElementById("dev").innerHTML = dev_debug;
+	}
+
+	
+
+
+
+	var nd;
+
+	var x = player.x;
+	var y = player.y;
+
+	if (keyIsDown(87) || (mouseIsPressed && mouseX > width/2-100 && mouseX < width/2-100+200 && mouseY > 100 && mouseY < 175 )) {
+		var ch = check(4,x,y);	
+		if (x >= 0 && !ch[0][2] && !ch[1][2] && ch[2]) {
+		   	player.dir = 4;	
+		} 
+	}
+	if (keyIsDown(68) || (mouseIsPressed && mouseX > width-175 && mouseX < width-75 && mouseY > height/2-100 && mouseY < height/2+100 )) {
+		var ch = check(2,x,y);	
+		if (x <= width && !ch[0][1] && !ch[1][1] && ch[2]) {
+		   	player.dir = 2;	
+		} 
+	}
+	if (keyIsDown(83) || (mouseIsPressed && mouseX > width/2-100 && mouseX < width/2-100+200 && mouseY > height-175 && mouseY < height-75 )) {
+		var ch = check(3,x,y);	
+		if (y <= height && !ch[0][0] && !ch[1][0] && ch[2]) {
+		   	player.dir = 3;	
+		} 
+	}
+	if (keyIsDown(65) || (mouseIsPressed && mouseX > 75 && mouseX < 175 && mouseY > height/2-100 && mouseY < height/2+100 )) {
+		var ch = check(1,x,y);	
+		if (y >= 0 && !ch[0][3] && !ch[1][3] && ch[2]) {
+		   	player.dir = 1;	
+		} 
+	}
+	if (coinWidth > 10) {
+		cop = -0.2;
+
+	}
+	if (coinWidth < 4) {
+		cop = 0.2;
+	}
+	if (!gameover) {
+		coinWidth += cop
+	}
+	if (!gameover && !schutzzeit) {
+		for(var i = 0; i < player.speed; i++) {
+			player.update()
+		}
+		for(i = 0; i < ghosts.length; i++) {
+			for(var j = 0; j < ghosts[i].speed; j++) {
+				ghosts[i].update()
+			}	
+		}
+	}
+	else if (!gameover) {
+		for(var i = 0; i < player.speed; i++) {
+			player.update()
+		}
+	}
+	background(51);
+	for (i = 0; i < grid.length; i++) { 
+		grid[i].show();
+	}
+	
+	for(i = 0; i < ghosts.length; i++) {
+		ghosts[i].show()
+	}
+	player.show();
+
+	if (gameover) {
+		if ((keyIsPressed === true || mouseIsPressed) && timer) {
+			gameover = false;
+			new_maze()
+		}
+		
+		fill(11);
+		stroke(0);
+		strokeWeight(10);
+		rect(100,100,width-200,height-200)
+		fill(255,255,0)
+		stroke(0);
+		strokeWeight(3);
+		textSize(42);
+		text(message, 220, 160);	
+		text("Press any to Play", 220, 360);
+
+
+	}
+	strokeWeight(1);
+	textSize(32);
+	if (ghosts[0].speed == 4 && !schutzzeit && !gameover) {
+		text(player.coins + " / " + allcoins + " Coins", 10, 30);	
+	}
+	else if (!schutzzeit && ghosts[0].speed == 1 && !gameover){
+		fill(0,0,255)
+		text("FREEZE " + fr_timer, 10, 30);
+		fill(255,255,0)
+	}
+	if(schutzzeit && !gameover) {
+		fill(255)
+		text("Schutz " + fr_timer, 10, 30);
+		fill(255,255,0)
+	}
+	if (!gameover) {
+		//menu();
+
+	}
+	strokeWeight(3);
+	textSize(64);
+	text("PACMAN", 250, 60);	
+}
+function menu() {
+	stroke("red")
+	noFill();
+	strokeWeight(2)
+	rect(width/2-100,75,200,100)
+	rect(width-175,height/2-100,100,200)
+	rect(width/2-100,height-175,200,100)
+	rect(75,height/2-100,100,200)
+}
+function new_maze() {
+
+	if (dev_mode && !document.getElementById("dev")) {
+		var para = document.createElement("P");
+  		para.innerHTML = "<p id='dev'></p>";
+  		document.body.appendChild(para);
+ 	}
+	coins = 0;
+	grid = [];
+	current = null;
+	stack = [];
+	finished = false;
+	var rx = Math.floor(Math.random()*cols);
+	var ry = Math.floor(Math.random()*rows);
+
+	player = new newPlayer(rx*w,ry*w);
+
+	for (var j = 0; j < rows; j++) {
+		for (i = 0; i < cols; i++) {
+			var newc = new cell(i,j);
+			grid.push(newc);
+		}
+	}
+	current = grid[index(rx,ry)];
+	
+	current.player = true
+
+	generate()
+
+	schutzzeit = true;
+	fr_timer = 5;
+	var fr_time = setInterval(function(){fr_timer--},1000)
+	setTimeout(function() {
+		schutzzeit = false;
+		clearInterval(fr_time)	
+	}, 5000)
+}
+
+function generate() {
+	var n = 0;
+
+	background(51);
+
+	for (var k = 0;k < lib; k++) {
+		current.visited = true;
+
+		var next = current.checkNeighbors();
+		if (next) {
+
+			next.visited = true;
+
+			stack.push(current);
+
+			removeWalls(current, next);
+
+			current = next;
+
+			if(k/101 == Math.round(k/100) && !current.coin) {
+				current.coin = true;
+				coins++;
+			}	
+			if(k == 666 && !current.coin) {
+				current.freeze = true;
+			}
+
+
+			allcoins = coins;
+			if(k/Math.round(lib/ghost_a) == Math.round(k/Math.round(lib/ghost_a)) && k != 0) {
+				ghosts[n] = new ghost(grid.indexOf(current) % cols,Math.floor(grid.indexOf(current) / cols));
+				n++
+			}
+		}
+		else if (stack.length > 0){
+			var cell = stack[Math.floor(Math.random()*stack.length)]
+			//stack = stack.pop();
+
+			current = cell;
+		}	
+	}
+	//grid[0].visited = true;
+}
+
+function ghost(a,b) {
+	this.x = a*w;
+	this.y = b*w;
+	
+	this.dir = 2;
+
+	this.speed = 4;
+
+	this.seen = false;
+
+	this.show = function() {
+		var x = this.x;
+		var y = this.y;
+		var d = this.dir; 	
+		if (schutzzeit) {
+			fill('rgba(0,255,0, 0.05)');
+		}
+		else {
+			fill(0,255,0)
+		}
+
+		noStroke()
+		circle(this.x+w/2,this.y+w/2,w/2-3)
+
+		if (schutzzeit) {
+			stroke('rgba(255,255,255, 0.05)');
+		}
+		else {
+			stroke(255)
+		}
+		
+		beginShape()
+		vertex(x+w/2,y+w/2)
+		
+		if (d == 1) {
+			vertex(x+4,y+w/2);
+		}
+		else if (d == 2) {
+			vertex(x+w-4,y+w/2);
+		}
+		else if (d == 3) {
+			vertex(x+w/2,y+w-4);
+		}	
+		else if (d == 4) {
+			vertex(x+w/2,y+4);
+		}
+
+		endShape()
+	}
+
+	this.update = function() {
+		var d = this.dir;
+		var x = this.x;
+		var y = this.y;
+
+		var ch = check(d,x,y)
+
+		if (Math.round(player.x/w) == Math.round(x/w) && Math.round(player.y/w) == Math.round(y/w)) {
+			message = "Game Over";
+			gameover = true;
+			timer = false;
+			setTimeout(function() {timer = true}, 1000)
+		}
+		var stop = false;
+		for (i = 1;i < 5; i++) {
+			var ind = index(Math.round(this.x/w), Math.round(this.y/w))
+			var fin = false;
+			var n = 0;
+			
+			
+			while(!fin && n < 100) {
+				n++;
+				
+				if ((ind == index(Math.round(player.x/w),Math.round(player.y/w)) && x/w == Math.round(x/w) && y/w == Math.round(y/w)) || (player.x == x && player.y == y)){
+					this.dir = i;
+					fin = true;
+					stop = true;
+					break;
+				}
+				if (i == 1 && !stop) {
+					if(grid[ind] && grid[ind].walls[3]) {
+						break;
+					}
+					ind--
+				}
+				else if (i == 2 && !stop) {
+					if(grid[ind] && grid[ind].walls[1]) {
+						break;
+					}
+					ind++
+				}
+				else if (i == 3 && !stop) {
+					if(grid[ind] && grid[ind].walls[2]) {
+						break;
+					}
+					ind+=cols
+				}
+				else if (i == 4 && !stop) {
+					if(grid[ind] && grid[ind].walls[0]) {
+						break;
+					}
+					ind-=cols
+				}
+			}
+			if (stop) {
+				break;
+				this.seen = true;
+			}
+		}
+
+		var r = Math.floor(Math.random()*250)
+
+		var cx = x;
+		var cy = y;
+
+		if (d == 1 && x > 0 && !ch[0][3] && !ch[1][3] && ch[2]) {
+			this.x -= 1;
+		}
+		else if (d == 2 && x < width && !ch[0][1] && !ch[1][1] && ch[2]) {
+			this.x += 1;
+		}
+		else if (d == 3 && y < height && !ch[0][0] && !ch[1][0] && ch[2]) {
+			this.y += 1;
+		}	
+		else if (d == 4 && y > 0 && !ch[0][2] && !ch[1][2] && ch[2]) {
+			this.y -= 1;
+		}
+		if (((this.x == cx && this.y == cy) || r == 1 && !this.seen) && !stop) {
+			fin = false;
+			n = 0;
+			while(!fin && n < 10000) {
+				var nd = Math.floor(Math.random()*4)+1
+				var nch = check(nd,x,y)
+				n++
+				if (!nch[0][3] && !nch[1][3] && nch[2] || !nch[0][1] && !nch[1][1] && nch[2] || !nch[0][0] && !nch[1][0] && nch[2] || !nch[0][2] && !nch[1][2] && nch[2]) {
+					this.dir = nd;
+		   			fin = true;	
+				} 
+			}
+			if(r != 1) {
+				this.seen = false;
+			}
+		}
+	}        
+}
+
+function newPlayer(a,b) {
+	this.x = a;
+	this.y = b;
+	
+	this.dir = 2;
+
+	this.speed = 2.5;
+
+	this.coins = 0;
+
+	this.show = function() {
+		var x = this.x;
+		var y = this.y;
+		var d = this.dir; 	
+
+		fill(255,255,0)
+		noStroke()
+		circle(this.x+w/2,this.y+w/2,w/2-3)
+		stroke(0)
+		beginShape()
+		vertex(x+w/2,y+w/2)
+		if (d == 1) {
+			vertex(x+3,y+w/2);
+		}
+		else if (d == 2) {
+			vertex(x+w-3,y+w/2);
+		}
+		else if (d == 3) {
+			vertex(x+w/2,y+w-3);
+		}	
+		else if (d == 4) {
+			vertex(x+w/2,y+3);
+		}
+
+		endShape()
+	}
+	this.update = function() {
+		var d = this.dir;
+		var x = this.x;
+		var y = this.y;
+
+		var ch = check(d,x,y)
+
+		var i = index(Math.round(this.x/w), Math.round(this.y/w))
+
+		
+		if (d == 1 && x > 0 && !ch[0][3] && !ch[1][3] && ch[2]) {
+			this.x -= 1;
+		}
+		else if (d == 2 && x < width && !ch[0][1] && !ch[1][1] && ch[2]) {
+			this.x += 1;
+		}
+		else if (d == 3 && y < height && !ch[0][0] && !ch[1][0] && ch[2]) {
+			this.y += 1;
+		}	
+		else if (d == 4 && y > 0 && !ch[0][2] && !ch[1][2] && ch[2]) {
+			this.y -= 1;
+		}
+		if (!schutzzeit) {
+			if (grid[i].coin) {
+				grid[i].coin = false;
+				coins--
+				this.coins++;
+			}
+			else if (grid[i].freeze) {
+				grid[i].freeze = false;
+				for (var l = 0; l < ghosts.length; l++) {
+					ghosts[l].speed = 1;
+				}
+				fr_timer = 5;
+				var fr_time = setInterval(function(){fr_timer--},1000)
+				setTimeout(function() {
+					for (var l = 0; l < ghosts.length; l++) {
+						clearInterval(fr_time)
+						fr_timer = 7
+						ghosts[l].speed = 4;
+					}
+				}, 5000)
+
+
+
+			}
+		}
+		if (coins < 1) {
+			message = "you win";
+			gameover = true;
+			timer = false;
+			setTimeout(function() {timer = true}, 1000)
+		}
+	}        
+}
+
+function check(d,i,j) {
+	var x = i / w;
+	var y = j / w;
+
+	var nx1, ny1, nx2, ny2;
+	var res = [];
+	
+	if (d == 1) {nx1 = Math.ceil(x);nx2 = Math.ceil(x);ny1 = Math.ceil(y);ny2 = Math.floor(y);}
+	if (d == 2) {nx1 = Math.floor(x);nx2 = Math.floor(x);ny1 = Math.ceil(y);ny2 = Math.floor(y);}
+	if (d == 3) {nx1 = Math.ceil(x);nx2 = Math.floor(x);ny1 = Math.ceil(y);ny2 = Math.ceil(y);}	
+	if (d == 4) {nx1 = Math.ceil(x);nx2 = Math.floor(x);ny1 = Math.floor(y);ny2 = Math.floor(y);}
+
+	if (ny1 == y) {
+		if (d == 3) {
+			ny1++
+			ny2++	
+		}
+		if (d == 4) {
+			ny1--
+			ny2--
+		}
+	}
+	
+	if (grid[index(nx1,ny1)]) {
+		res.push(grid[index(nx1,ny1)].walls)
+	}
+	else {
+		res.push([true,true,true,true,"error"])
+	}
+	if (grid[index(nx2,ny2)]) {
+		res.push(grid[index(nx2,ny2)].walls)
+	}
+	else {
+		res.push([true,true,true,true,"error"])
+	}
+
+	var h = true;	
+
+	var xr = Math.round(x)
+	var yr = Math.round(y)
+
+	if (x == xr && y != yr) {
+		if (d == 1 && grid[index(nx2,ny2)-1] && grid[index(nx2,ny2)-1].walls[2]){h=false;}
+		if (d == 2 && grid[index(nx2,ny2)+1] && grid[index(nx2,ny2)+1].walls[2]){h=false;}
+	}
+
+	if (y == yr && x != xr && grid[index(nx1,ny1)]) {
+		if (d == 3 && grid[index(nx1,ny1)].walls[3]){h=false;}
+		if (d == 4 && grid[index(nx1,ny1)].walls[3]){h=false;}
+	}
+
+	res.push(h);
+	
+	return res
+}
+
+
+function index(i,j) {
+	if (i < 0 || j < 0 || i > cols-1 || j > rows-1) {
+		return -1;
+	}
+
+	return i + j * cols; 
+}
+
+
+function removeWalls(a,b) {
+	var x = a.i - b.i;
+	var y = a.j - b.j;
+	if (x === 1) {
+		a.walls[3] = false;
+		b.walls[1] = false;
+	}
+	else if (x === -1) {
+		a.walls[1] = false;
+		b.walls[3] = false;
+	}	
+	else if (y === 1) {
+		a.walls[0] = false;
+		b.walls[2] = false;
+	}
+	else if (y === -1) {
+		a.walls[2] = false;
+		b.walls[0] = false;
+	}
+}
+
+function cell(i_,j_) {
+	this.i = i_;
+	this.j = j_;
+
+	this.walls = [true,true,true,true]
+	this.visited = false;
+	this.coin = false;	
+	this.freeze = false;
+
+	this.checkNeighbors = function(t,r,b,l) {
+		
+		var neighbors = [];
+
+		var ws = [];
+
+		var top = grid[index(this.i, this.j-1)]
+		var right = grid[index(this.i+1, this.j)]
+		var bottom = grid[index(this.i, this.j+1)]
+		var left = grid[index(this.i-1, this.j)]
+
+		if (top) {
+			neighbors.push(top)
+		}
+		if (right) {
+			neighbors.push(right)
+		}
+		if (bottom) {
+			neighbors.push(bottom)
+		}
+		if (left) {
+			neighbors.push(left)
+		}
+		
+		if (neighbors.length > 0) {	
+			var r = floor(random(0,neighbors.length))
+			return neighbors[r]
+		}
+		else {
+			return undefined;
+		}
+	}
+	this.show = function() {
+		var x = this.i * w;
+		var y = this.j * w;
+		var xw, yw;
+
+		var walls = this.walls;
+		
+		if (this.visited) {
+			stroke(255);
+			
+			strokeWeight(3)
+
+			if (walls[0]) { line(x, y, x + w, y);}
+
+			if (walls[1]) {line(x + w, y, x + w, y + w);}
+
+			if (walls[2]) {line(x + w, y + w, x, y + w);}
+
+			if (walls[3]) {line(   x, y + w, x, y);}
+
+			noStroke();
+			fill(51);
+			rect(x+2,y+2,w-3,w-3);
+		}
+		if (this.coin) {
+			stroke(0);
+			fill(255,255,0)
+			strokeWeight(1)
+			circle(x+w/2,y+w/2,coinWidth)
+		}		
+		else if (this.freeze) {
+			stroke(0);
+			fill(0,0,255)
+			strokeWeight(1)
+			circle(x+w/2,y+w/2,coinWidth)
+		}
+
+
+
+	}
+}
+</script>
+</html>
